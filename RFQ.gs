@@ -345,3 +345,156 @@ function getSourceSheetNames() {
     return [];
   }
 }
+
+// ============================================================
+// SYNC (Update existing + Add new) - called from UI refresh button
+// ============================================================
+function syncRFQFromSource() {
+  try {
+    var ss    = SpreadsheetApp.openById(SOURCE_SPREADSHEET_ID);
+    var sheet = findRFQSheet(ss);
+    if (!sheet) return { success: false, error: 'RFQ sheet not found' };
+
+    var all = sheet.getDataRange().getValues();
+    if (all.length < 2) return { success: false, error: 'No data rows found' };
+
+    var headerRow = 0;
+    for (var i = 0; i < Math.min(5, all.length); i++) {
+      if (all[i].filter(function(c){ return c !== '' && c !== null; }).length >= 5) {
+        headerRow = i; break;
+      }
+    }
+
+    var headers  = all[headerRow].map(function(h){ return String(h).trim(); });
+    var mapping  = buildColumnMapping(headers);
+    var dataRows = all.slice(headerRow + 1);
+    var user     = getCurrentUser();
+
+    // Build index of existing records by rfqNumber
+    var existing    = readSheet('RFQ');
+    var existingMap = {};
+    existing.forEach(function(r){ if (r.rfqNumber) existingMap[r.rfqNumber] = r; });
+
+    var added = 0, updated = 0, skipped = 0;
+
+    dataRows.forEach(function(row) {
+      if (row.every(function(c){ return c === '' || c === null || c === undefined; })) {
+        skipped++; return;
+      }
+
+      function col(field) {
+        var idx = mapping[field];
+        if (idx === undefined || idx === null) return '';
+        return (row[idx] !== undefined && row[idx] !== null) ? String(row[idx]).trim() : '';
+      }
+
+      var rfqNum  = col('rfqNumber') || ('IMP-' + (added + updated + skipped + 1));
+      var potRaw  = col('probability');
+      var prob    = normalizeProbability(potRaw);
+      var status  = normalizeStatusFromProbability(potRaw);
+
+      // Find date value in row
+      var requestDate = '';
+      for (var ci = 0; ci < row.length; ci++) {
+        if (row[ci] instanceof Date) {
+          requestDate = Utilities.formatDate(row[ci], 'Asia/Bangkok', 'yyyy-MM-dd');
+          break;
+        }
+      }
+
+      var newData = {
+        rfqNumber:       rfqNum,
+        customerName:    col('customerName'),
+        subcon:          col('subcon'),
+        productType:     col('productType'),
+        factory:         col('factory'),
+        partName:        col('partName'),
+        partColor:       col('partColor'),
+        quantity:        col('quantity'),
+        unit:            col('consumptionUnit') || col('unitPriceUnit') || 'pcs',
+        unitPrice:       col('unitPrice'),
+        unitPriceUnit:   col('unitPriceUnit'),
+        grossProfitPct:  col('grossProfitPct'),
+        grossProfit:     col('grossProfit'),
+        probability:     prob,
+        requestDate:     requestDate,
+        closedDate:      formatDateCell(col('closedDate')),
+        quotedAmount:    col('unitPrice'),
+        revenuePerMonth: col('revenuePerMonth'),
+        gpPerMonth:      col('gpPerMonth'),
+        currency:        'THB',
+        status:          status,
+        notes:           col('notes'),
+        source:          'imported'
+      };
+
+      if (existingMap[rfqNum]) {
+        // Update existing record (only source-origin fields, preserve manual edits to status)
+        var existing_rec = existingMap[rfqNum];
+        var merged = Object.assign({}, existing_rec, newData, {
+          id:        existing_rec.id,
+          updatedAt: new Date().toISOString(),
+          updatedBy: user.email
+        });
+        // Preserve manual status overrides
+        if (existing_rec.source !== 'imported') merged.status = existing_rec.status;
+        updateRow('RFQ', merged);
+        updated++;
+      } else {
+        newData.id        = generateId();
+        newData.createdAt = new Date().toISOString();
+        newData.createdBy = user.email;
+        newData.assignedTo = user.email;
+        appendRow('RFQ', newData);
+        existingMap[rfqNum] = newData;
+        added++;
+      }
+    });
+
+    var now = new Date().toISOString();
+    PropertiesService.getScriptProperties().setProperty('RFQ_LAST_SYNC', now);
+
+    return { success: true, added: added, updated: updated, skipped: skipped,
+             total: dataRows.length, syncedAt: now };
+  } catch(e) {
+    Logger.log('syncRFQFromSource: ' + e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+// ---- Get last sync info ----
+function getRFQSyncInfo() {
+  var lastSync = PropertiesService.getScriptProperties().getProperty('RFQ_LAST_SYNC') || null;
+  return {
+    lastSync:    lastSync,
+    totalRecords: readSheet('RFQ').length
+  };
+}
+
+// ---- Time-based auto sync trigger (runs daily at 8AM Bangkok time) ----
+function setupRFQAutoSyncTrigger() {
+  // Remove existing triggers for this function
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'autoSyncRFQ') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('autoSyncRFQ')
+    .timeBased()
+    .everyDays(1)
+    .atHour(8)
+    .inTimezone('Asia/Bangkok')
+    .create();
+  return { success: true, message: '毎日8時(バンコク時間)に自動同期を設定しました' };
+}
+
+function removeRFQAutoSyncTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'autoSyncRFQ') ScriptApp.deleteTrigger(t);
+  });
+  return { success: true };
+}
+
+// Called by trigger
+function autoSyncRFQ() {
+  var result = syncRFQFromSource();
+  Logger.log('autoSyncRFQ: ' + JSON.stringify(result));
+}

@@ -29,9 +29,16 @@ function renderRFQPage() {
             <input type="text" id="rfqSearchInput" placeholder="${t('search')}..."
               oninput="rfqSearch(this.value)">
           </div>
+          <button class="btn btn-secondary btn-sm" id="rfqSyncBtn" onclick="rfqSyncFromSource()" title="${t('syncFromSource')||'ソースから同期'}">
+            🔄 ${t('sync')||'同期'}
+          </button>
           <button class="btn btn-primary btn-sm" onclick="rfqShowForm()">
             ➕ ${t('addRFQ')}
           </button>
+        </div>
+        <div id="rfqSyncInfoBar" style="display:none;padding:4px 12px 0;font-size:11px;color:#5f6368;display:flex;align-items:center;gap:8px">
+          <span id="rfqSyncStatus"></span>
+          <button onclick="rfqOpenAutoSyncModal()" style="border:none;background:none;cursor:pointer;font-size:11px;color:#1a73e8;padding:0">⚙ 自動同期設定</button>
         </div>
 
         <!-- Status filter tabs -->
@@ -81,6 +88,7 @@ function renderRFQPage() {
 
   initRFQResize();
   loadRFQList();
+  rfqLoadSyncInfo();
 }
 
 // ---- LOAD RFQ LIST ----
@@ -669,5 +677,59 @@ function formatCurrency(amount, currency) {
   var symbols = { 'JPY':'¥', 'THB':'฿', 'USD':'$', 'EUR':'€', 'CNY':'¥' };
   var sym = symbols[cur] || '';
   return sym + num.toLocaleString('ja-JP', {maximumFractionDigits: 0}) + ' ' + cur;
+}
+
+// ---- SYNC FROM SOURCE ----
+function rfqLoadSyncInfo() {
+  google.script.run
+    .withSuccessHandler(function(info) {
+      var bar = document.getElementById('rfqSyncInfoBar');
+      var lbl = document.getElementById('rfqSyncStatus');
+      if (!bar || !lbl) return;
+      bar.style.display = 'flex';
+      var lastSync = info.lastSync ? new Date(info.lastSync) : null;
+      var dateStr  = lastSync ? (lastSync.getFullYear() + '/' +
+        String(lastSync.getMonth()+1).padStart(2,'0') + '/' +
+        String(lastSync.getDate()).padStart(2,'0') + ' ' +
+        String(lastSync.getHours()).padStart(2,'0') + ':' +
+        String(lastSync.getMinutes()).padStart(2,'0')) : '未同期';
+      lbl.textContent = '最終同期: ' + dateStr + '  (' + (info.totalRecords||0) + '件)';
+    })
+    .withFailureHandler(function(){})
+    .getRFQSyncInfo();
+}
+
+function rfqSyncFromSource() {
+  var btn = document.getElementById('rfqSyncBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 同期中...'; }
+  showToast('ソースデータを同期中...', 'info');
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '🔄 ' + (t('sync')||'同期'); }
+      if (result.success) {
+        showToast('✅ 同期完了: 追加 ' + result.added + '件, 更新 ' + result.updated + '件', 'success');
+        loadRFQList();
+        rfqLoadSyncInfo();
+      } else {
+        showToast('❌ 同期失敗: ' + result.error, 'error');
+      }
+    })
+    .withFailureHandler(function(e) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '🔄 ' + (t('sync')||'同期'); }
+      showToast('❌ ' + e.message, 'error');
+    })
+    .syncRFQFromSource();
+}
+
+function rfqOpenAutoSyncModal() {
+  if (confirm('毎日8時(バンコク時間)に自動同期を設定しますか？\n\n※ GAS の承認が必要な場合があります。')) {
+    google.script.run
+      .withSuccessHandler(function(r) {
+        showToast(r.message || '自動同期を設定しました', 'success');
+      })
+      .withFailureHandler(function(e) { showToast('❌ ' + e.message, 'error'); })
+      .setupRFQAutoSyncTrigger();
+  }
 }
 </script>
