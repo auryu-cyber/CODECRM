@@ -13,6 +13,10 @@ var rfqState = {
   rightMode: 'import', // 'import' | 'detail' | 'form'
   filterStatus: 'all',
   search: '',
+  filterYear: 'all',
+  filterPoYear: 'all',
+  filterBU: 'all',
+  filterFAC: 'all',
   importMapping: {}
 };
 
@@ -50,6 +54,25 @@ function renderRFQPage() {
               <span class="rfq-stab-count" id="rfqCount_${s}">0</span>
             </button>`;
           }).join('')}
+        </div>
+
+        <!-- Additional filters -->
+        <div class="rfq-filter-bar" id="rfqFilterBar">
+          <select id="rfqYearSel" onchange="rfqFilterSet('filterYear',this.value)">
+            <option value="all">${t('filterQuoteYear')||'見積年'}: 全て</option>
+          </select>
+          <select id="rfqPoYearSel" onchange="rfqFilterSet('filterPoYear',this.value)">
+            <option value="all">${t('filterPoYear')||'受注年'}: 全て</option>
+          </select>
+          <select id="rfqBUSel" onchange="rfqFilterSet('filterBU',this.value)">
+            <option value="all">BU: 全て</option>
+            <option>TUBE</option><option>DIPPING</option><option>GASKET</option>
+            <option>MAGNET</option><option>HOLDER</option><option>RIGID</option>
+          </select>
+          <select id="rfqFACSel" onchange="rfqFilterSet('filterFAC',this.value)">
+            <option value="all">FAC: 全て</option>
+            <option>LKB</option><option>GTW</option>
+          </select>
         </div>
 
         <!-- List -->
@@ -131,9 +154,17 @@ function rfqApplyFilter() {
              (r.partNumber||'').toLowerCase().indexOf(q) !== -1;
     });
   }
+  var fy=rfqState.filterYear, fpy=rfqState.filterPoYear,
+      fbu=rfqState.filterBU, ffac=rfqState.filterFAC;
+  if (fy  !=='all') rows=rows.filter(function(r){return rfqYear(r.requestDate)===fy;});
+  if (fpy !=='all') rows=rows.filter(function(r){return r.status==='Won'&&rfqYear(r.closedDate)===fpy;});
+  if (fbu !=='all') rows=rows.filter(function(r){return (r.productType||'').toUpperCase()===fbu;});
+  if (ffac!=='all') rows=rows.filter(function(r){return (r.factory||'').toUpperCase()===ffac;});
+
   rfqState.filtered = rows;
   rfqRenderList(rows);
   rfqUpdateStatusCounts();
+  rfqRefreshYearOptions();
 }
 
 function rfqUpdateStatusCounts() {
@@ -172,6 +203,8 @@ function rfqRenderList(rows) {
       <div class="rfq-item-top">
         <span class="rfq-number">${r.rfqNumber||'-'}</span>
         ${imported}
+        ${r.productType ? `<span class="rfq-bu-tag rfq-bu-${(r.productType||'').toLowerCase()}">${r.productType}</span>` : ''}
+        ${r.factory ? `<span class="rfq-fac-tag">${r.factory}</span>` : ''}
         <span class="badge badge-${sc}" style="margin-left:auto">${t('rfqStatus_'+r.status)||r.status}</span>
       </div>
       <div class="rfq-item-customer">🏢 ${r.customerName||'-'}</div>
@@ -249,6 +282,13 @@ function rfqRenderDetail(r) {
         ${rfqDetailRow('📝', t('quotedDate'), formatDate(r.quotedDate))}
         ${rfqDetailRow('💰', t('quotedAmount'), r.quotedAmount ? formatCurrency(r.quotedAmount, r.currency) : '-')}
         ${rfqDetailRow('👤', t('assignedTo'), r.assignedTo)}
+        ${r.productType ? rfqDetailRow('🏭', t('productType')||'BU', r.productType) : ''}
+        ${r.factory ? rfqDetailRow('🏗️', t('factory')||'FAC', r.factory) : ''}
+        ${rfqDetailRow('💴', t('unitPrice')||'単価', r.unitPrice ? (r.unitPrice + ' ' + (r.unitPriceUnit||'THB')) : '-')}
+        ${rfqDetailRow('📦', t('consumption')||'消費量/月', r.quantity ? (r.quantity + ' ' + (r.unit||'pcs')) : '-')}
+        ${rfqDetailRow('📈', t('revenueCalc')||'売上/月', (function(){var rev=rfqCalcRevenue(r);return rev?formatCurrency(rev,r.currency):'-';})())}
+        ${rfqDetailRow('🎯', t('potentialPct')||'Potential%', rfqProbLabel(r))}
+        ${r.status === 'Won' && r.closedDate ? rfqDetailRow('🏆', t('firstPoDate')||'初回受注日', formatDate(r.closedDate)) : ''}
       </div>
 
       ${r.notes ? `<div class="rfq-detail-notes">
@@ -731,5 +771,61 @@ function rfqOpenAutoSyncModal() {
       .withFailureHandler(function(e) { showToast('❌ ' + e.message, 'error'); })
       .setupRFQAutoSyncTrigger();
   }
+}
+
+// ---- FILTER HELPERS ----
+function rfqFilterSet(key, val) {
+  rfqState[key] = val;
+  rfqApplyFilter();
+}
+
+function rfqYear(d) {
+  if (!d) return null;
+  var y = new Date(d).getFullYear();
+  return isNaN(y) ? null : String(y);
+}
+
+function rfqProbLabel(r) {
+  if (r.potentialRaw) return r.potentialRaw;
+  var p = parseInt(r.probability) || 0;
+  var map = {0:'0%', 10:'10%', 30:'30%', 50:'50%', 60:'60%', 80:'Focus', 100:'100%'};
+  return map[p] || (p + '%');
+}
+
+function rfqCalcRevenue(r) {
+  var up = parseFloat(String(r.unitPrice||'').replace(/,/g,'')) || 0;
+  var qty = parseFloat(String(r.quantity||'').replace(/,/g,'')) || 0;
+  if (up && qty) return up * qty;
+  return parseFloat(String(r.revenuePerMonth||'').replace(/,/g,'')) || 0;
+}
+
+function rfqRefreshYearOptions() {
+  var ySel = document.getElementById('rfqYearSel');
+  var pySel = document.getElementById('rfqPoYearSel');
+  if (!ySel || !pySel) return;
+
+  var curY = rfqState.filterYear;
+  var curPY = rfqState.filterPoYear;
+
+  var years = rfqState.list.map(function(r){return rfqYear(r.requestDate);})
+    .filter(function(y){return y;});
+  years = years.filter(function(v,i,a){return a.indexOf(v)===i;}).sort().reverse();
+
+  var poYears = rfqState.list.filter(function(r){return r.status==='Won';})
+    .map(function(r){return rfqYear(r.closedDate);})
+    .filter(function(y){return y;});
+  poYears = poYears.filter(function(v,i,a){return a.indexOf(v)===i;}).sort().reverse();
+
+  var baseY = '<option value="all">' + (t('filterQuoteYear')||'見積年') + ': 全て</option>';
+  ySel.innerHTML = baseY + years.map(function(y){
+    return '<option value="'+y+'"'+(y===curY?' selected':'')+'>'+y+'</option>';
+  }).join('');
+  if (curY !== 'all') ySel.value = curY;
+
+  var basePY = '<option value="all">' + (t('filterPoYear')||'受注年') + ': 全て</option>';
+  pySel.innerHTML = basePY + poYears.map(function(y){
+    return '<option value="'+y+'"'+(y===curPY?' selected':'')+'>'+y+'</option>';
+  }).join('');
+  if (curPY !== 'all') pySel.value = curPY;
 }
 </script>

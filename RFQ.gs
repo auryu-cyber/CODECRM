@@ -264,6 +264,7 @@ function importRFQFromSource() {
         grossProfitPct:  col('grossProfitPct'),
         grossProfit:     col('grossProfit'),
         probability:     prob,
+        potentialRaw:    potRaw,
         requestDate:     formatDateCell(col('rfqNumber') === rfqNum ? '' : ''), // use record date if available
         closedDate:      formatDateCell(col('closedDate')),
         quotedAmount:    col('unitPrice'),
@@ -417,6 +418,7 @@ function syncRFQFromSource() {
         grossProfitPct:  col('grossProfitPct'),
         grossProfit:     col('grossProfit'),
         probability:     prob,
+        potentialRaw:    potRaw,
         requestDate:     requestDate,
         closedDate:      formatDateCell(col('closedDate')),
         quotedAmount:    col('unitPrice'),
