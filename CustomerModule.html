@@ -1,0 +1,575 @@
+<script>
+// ============================================================
+// CustomerModule.html — Customer Management (split-panel)
+// Left : list + search + filters
+// Right: detail (related RFQ/activity/deal tabs) | form
+// ============================================================
+
+var custState = {
+  list:       [],
+  filtered:   [],
+  selected:   null,
+  rightMode:  'welcome',  // 'welcome' | 'detail' | 'form' | 'rfq_detail'
+  filterType: 'all',      // all | Domestic | Export
+  filterBU:   'all',
+  filterFAC:  'all',
+  search:     '',
+  relatedTab: 'rfq'
+};
+
+// ─── RENDER PAGE ─────────────────────────────────────────────
+function renderCustomerPage() {
+  setHeaderTitle(t('customers'));
+  document.getElementById('pageContent').innerHTML = `
+    <div id="custSplitPanel" class="rfq-split">
+      <!-- LEFT PANEL -->
+      <div class="rfq-left" id="custLeft">
+        <div class="rfq-toolbar">
+          <div class="search-bar" style="flex:1">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="custSearchInput"
+              placeholder="${t('search')}..."
+              oninput="custSearch(this.value)">
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="custShowForm()">
+            ➕ ${t('add')||'追加'}
+          </button>
+        </div>
+
+        <!-- Type filter tabs -->
+        <div class="rfq-status-tabs">
+          ${['all','Domestic','Export'].map(function(s){
+            var label = s==='all' ? (t('rfqStatus_all')||'全て') : s;
+            return `<button class="rfq-stab ${s==='all'?'active':''}"
+              data-ctype="${s}" onclick="custFilterType('${s}')">
+              ${label}
+              <span class="rfq-stab-count" id="custCount_${s}">0</span>
+            </button>`;
+          }).join('')}
+        </div>
+
+        <!-- Additional filters -->
+        <div class="rfq-filter-bar">
+          <select id="custBUSel" onchange="custFilterSet('filterBU',this.value)">
+            <option value="all">BU: 全て</option>
+            <option>TUBE</option><option>DIPPING</option><option>GASKET</option>
+            <option>MAGNET</option><option>HOLDER</option>
+          </select>
+          <select id="custFACSel" onchange="custFilterSet('filterFAC',this.value)">
+            <option value="all">FAC: 全て</option>
+            <option>LKB</option><option>GTW</option>
+          </select>
+        </div>
+
+        <!-- List -->
+        <div class="rfq-list-body" id="custListBody">
+          <div style="text-align:center;padding:40px"><div class="spinner"></div></div>
+        </div>
+        <div class="rfq-list-footer" id="custListFooter"></div>
+      </div>
+
+      <!-- RESIZE HANDLE -->
+      <div class="rfq-divider" id="custDivider" title="ドラッグで幅調整"></div>
+
+      <!-- RIGHT PANEL -->
+      <div class="rfq-right" id="custRight">
+        <div class="rfq-right-header" id="custRightHeader">
+          <span id="custRightTitle">${t('customers')}</span>
+          <div class="rfq-right-actions" id="custRightActions"></div>
+        </div>
+        <div class="rfq-right-body" id="custRightBody">
+          <div style="text-align:center;padding:60px 24px;color:#5f6368">
+            <div style="font-size:48px;margin-bottom:16px">🏢</div>
+            <p style="font-size:15px;font-weight:600">${t('customers')}</p>
+            <p style="font-size:13px;margin-top:8px">顧客を選択して詳細を表示</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  initCustResize();
+  custLoadList();
+}
+
+// ─── LOAD / FILTER / RENDER ─────────────────────────────────
+function custLoadList() {
+  google.script.run
+    .withSuccessHandler(function(rows) {
+      custState.list = rows || [];
+      custApplyFilter();
+    })
+    .withFailureHandler(function(e) { showToast(e.message, 'error'); })
+    .getCustomers({});
+}
+
+function custSearch(val) { custState.search = val; custApplyFilter(); }
+
+function custFilterType(type) {
+  custState.filterType = type;
+  document.querySelectorAll('[data-ctype]').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.ctype === type);
+  });
+  custApplyFilter();
+}
+
+function custFilterSet(key, val) { custState[key] = val; custApplyFilter(); }
+
+function custApplyFilter() {
+  var rows = custState.list;
+  var q = custState.search.toLowerCase();
+
+  if (custState.filterType !== 'all') {
+    var ft = custState.filterType.toLowerCase();
+    rows = rows.filter(function(r) { return (r.type1||'').toLowerCase() === ft; });
+  }
+  if (custState.filterBU !== 'all') {
+    var fb = custState.filterBU.toUpperCase();
+    rows = rows.filter(function(r) { return (r.bu||'').toUpperCase().indexOf(fb) !== -1; });
+  }
+  if (custState.filterFAC !== 'all') {
+    var ff = custState.filterFAC.toUpperCase();
+    rows = rows.filter(function(r) { return (r.fac||'').toUpperCase().indexOf(ff) !== -1; });
+  }
+  if (q) {
+    rows = rows.filter(function(r) {
+      return (r.companyName||'').toLowerCase().indexOf(q) !== -1 ||
+             (r.contactPerson||'').toLowerCase().indexOf(q) !== -1 ||
+             (r.bu||'').toLowerCase().indexOf(q) !== -1 ||
+             (r.area||'').toLowerCase().indexOf(q) !== -1 ||
+             (r.customerProduct||'').toLowerCase().indexOf(q) !== -1;
+    });
+  }
+  custState.filtered = rows;
+  custRenderList(rows);
+  custUpdateTypeCounts();
+}
+
+function custUpdateTypeCounts() {
+  var all = custState.list;
+  var elAll = document.getElementById('custCount_all');
+  if (elAll) elAll.textContent = all.length;
+  ['Domestic','Export'].forEach(function(ty) {
+    var el = document.getElementById('custCount_'+ty);
+    if (el) el.textContent = all.filter(function(r) {
+      return (r.type1||'').toLowerCase() === ty.toLowerCase();
+    }).length;
+  });
+}
+
+function custRenderList(rows) {
+  var el = document.getElementById('custListBody');
+  var footer = document.getElementById('custListFooter');
+  if (!el) return;
+  if (!rows || rows.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🏢</div><p>${t('noData')}</p></div>`;
+    if (footer) footer.textContent = '';
+    return;
+  }
+  el.innerHTML = rows.map(function(r) {
+    var isSelected = custState.selected && custState.selected.id === r.id;
+    var buTags = (r.bu||'').split(/[,/]/).map(function(b) {
+      b = b.trim();
+      return b ? `<span class="rfq-bu-tag rfq-bu-${b.toLowerCase()}">${b}</span>` : '';
+    }).join('');
+    var facTag = r.fac ? (r.fac||'').split(/[,/]/).map(function(f) {
+      f = f.trim();
+      return f ? `<span class="rfq-fac-tag">${f}</span>` : '';
+    }).join('') : '';
+    var typeBadge = r.type1
+      ? `<span class="cust-type-badge cust-type-${(r.type1||'').toLowerCase()}">${r.type1}</span>`
+      : '';
+    return `<div class="rfq-list-item ${isSelected?'selected':''}"
+        onclick="custSelectRow('${r.id}')">
+      <div class="rfq-item-top">
+        ${typeBadge}
+        ${facTag}
+        <span style="margin-left:auto;font-size:10px;color:var(--text2)">#${r.customerId||r.id}</span>
+      </div>
+      <div class="rfq-item-customer">🏢 ${r.companyName||'-'}</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin:3px 0">${buTags}</div>
+      ${(r.contactPerson||r.area) ? `<div class="rfq-item-bottom">
+        ${r.contactPerson?`<span>👤 ${r.contactPerson}</span>`:''}
+        ${r.area?`<span style="margin-left:auto">📍 ${r.area}</span>`:''}
+      </div>` : ''}
+    </div>`;
+  }).join('');
+  if (footer) footer.textContent = rows.length + ' ' + t('records');
+}
+
+// ─── SELECT ROW ──────────────────────────────────────────────
+function custSelectRow(id) {
+  var row = custState.list.find(function(r) { return r.id === id; });
+  if (!row) return;
+  custState.selected = row;
+  custState.rightMode = 'detail';
+  document.querySelectorAll('#custListBody .rfq-list-item').forEach(function(el) {
+    var oc = el.getAttribute('onclick') || '';
+    el.classList.toggle('selected', oc.indexOf("'"+id+"'") !== -1);
+  });
+  custRenderDetail(row);
+}
+
+// ─── DETAIL VIEW ─────────────────────────────────────────────
+function custRenderDetail(c) {
+  custState.selected = c;
+  document.getElementById('custRightTitle').textContent = c.companyName || '-';
+  document.getElementById('custRightActions').innerHTML = `
+    <button class="btn btn-sm btn-secondary" onclick="custShowForm('${c.id}')">✏️ ${t('edit')}</button>
+    <button class="btn btn-sm btn-danger" onclick="custConfirmDelete('${c.id}')">🗑️</button>
+  `;
+
+  var buTags = (c.bu||'').split(/[,/]/).map(function(b) {
+    b = b.trim();
+    return b ? `<span class="rfq-bu-tag rfq-bu-${b.toLowerCase()}">${b}</span>` : '';
+  }).join('');
+  var facTags = (c.fac||'').split(/[,/]/).map(function(f) {
+    f = f.trim();
+    return f ? `<span class="rfq-fac-tag">${f}</span>` : '';
+  }).join('');
+  var relRfqs = custGetRelatedRFQs(c.companyName);
+
+  document.getElementById('custRightBody').innerHTML = `
+    <div style="overflow-y:auto;height:100%">
+      <!-- Header card -->
+      <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <span style="font-size:16px;font-weight:700;color:var(--text)">${c.companyName||'-'}</span>
+          ${c.type1?`<span class="cust-type-badge cust-type-${(c.type1||'').toLowerCase()}">${c.type1}</span>`:''}
+          ${buTags}${facTags}
+        </div>
+        <div class="rfq-detail-grid">
+          ${custDR('🏭', t('productType')||'BU', c.bu)}
+          ${custDR('🏗️', t('factory')||'FAC', c.fac)}
+          ${custDR('📋', t('custType1')||'区分', c.type1)}
+          ${c.dippingType ? custDR('🔧', t('dippingType')||'DIPPINGタイプ', c.dippingType) : ''}
+          ${c.subcon ? custDR('🤝', 'Subcon', c.subcon) : ''}
+          ${c.country ? custDR('🌏', t('country'), c.country) : ''}
+          ${c.manufacTrading ? custDR('🏭', t('manufacTrading')||'メーカー/商社', c.manufacTrading) : ''}
+          ${c.customerProduct ? custDR('📦', t('customerProduct')||'取扱製品', c.customerProduct) : ''}
+          ${c.customerApplication ? custDR('🔬', t('customerApplication')||'用途', c.customerApplication) : ''}
+          ${c.area ? custDR('📍', t('area')||'エリア', c.area) : ''}
+          ${c.contactPerson ? custDR('👤', t('contactPerson')||'担当者', c.contactPerson) : ''}
+          ${c.telephone ? custDR('📞', t('phone'), c.telephone) : ''}
+          ${c.email ? custDR('📧', t('email'), `<a href="mailto:${c.email}" style="color:var(--primary)">${c.email}</a>`) : ''}
+          ${c.web ? custDR('🌐', t('web')||'Web', `<a href="${c.web}" target="_blank" style="color:var(--primary)">${c.web}</a>`) : ''}
+          ${c.location ? custDR('📍', t('location')||'所在地', c.location) : ''}
+          ${c.remark ? custDR('📝', t('notes'), c.remark) : ''}
+        </div>
+      </div>
+
+      <!-- Related items -->
+      <div class="cust-related">
+        <div class="cust-related-tabs">
+          <button class="cust-rtab ${custState.relatedTab==='rfq'?'active':''}"
+            onclick="custSetRelatedTab('rfq')">
+            📋 ${t('relatedRFQs')||'関連RFQ'}
+            <span class="rfq-stab-count">${relRfqs.length}</span>
+          </button>
+          <button class="cust-rtab ${custState.relatedTab==='activity'?'active':''}"
+            onclick="custSetRelatedTab('activity')">
+            📝 ${t('relatedActivities')||'活動履歴'}
+            <span class="rfq-stab-count">0</span>
+          </button>
+          <button class="cust-rtab ${custState.relatedTab==='deal'?'active':''}"
+            onclick="custSetRelatedTab('deal')">
+            💼 ${t('relatedDeals')||'案件・商談'}
+            <span class="rfq-stab-count">0</span>
+          </button>
+        </div>
+        <div id="custRelatedBody">${custRelatedContent()}</div>
+      </div>
+    </div>
+  `;
+}
+
+function custDR(icon, label, value) {
+  return `<div class="rfq-detail-row">
+    <div class="rfq-detail-label">${icon} ${label}</div>
+    <div class="rfq-detail-value">${value||'-'}</div>
+  </div>`;
+}
+
+// ─── RELATED TAB LOGIC ───────────────────────────────────────
+function custSetRelatedTab(tab) {
+  custState.relatedTab = tab;
+  document.querySelectorAll('.cust-rtab').forEach(function(b, i) {
+    b.classList.toggle('active', ['rfq','activity','deal'][i] === tab);
+  });
+  var body = document.getElementById('custRelatedBody');
+  if (body) body.innerHTML = custRelatedContent();
+}
+
+function custGetRelatedRFQs(companyName) {
+  if (!companyName) return [];
+  var q = companyName.toLowerCase();
+  var list = (typeof rfqState !== 'undefined' && rfqState.list) ? rfqState.list : [];
+  return list.filter(function(r) {
+    var cn = (r.customerName||'').toLowerCase();
+    return cn.indexOf(q) !== -1 || q.indexOf(cn) !== -1;
+  });
+}
+
+function custRelatedContent() {
+  if (!custState.selected) return '';
+  var c = custState.selected;
+  if (custState.relatedTab === 'rfq') {
+    var rfqs = custGetRelatedRFQs(c.companyName);
+    if (!rfqs.length) return `<div class="empty-state" style="padding:28px">
+      <div class="empty-icon">📋</div><p style="margin-top:6px">${t('noData')}</p></div>`;
+    return `<div class="cust-related-list">${rfqs.map(function(r) {
+      var sc = rfqStatusColor(r.status);
+      var rev = rfqCalcRevenue(r);
+      return `<div class="cust-related-item" onclick="custShowRelatedRFQ('${r.id}')">
+        <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
+          <span style="font-size:11px;font-weight:600;color:var(--primary);font-family:monospace">${r.rfqNumber||'-'}</span>
+          ${r.productType?`<span class="rfq-bu-tag rfq-bu-${(r.productType||'').toLowerCase()}" style="font-size:9px;padding:0 4px">${r.productType}</span>`:''}
+          <span class="badge badge-${sc}" style="margin-left:auto;font-size:10px">${t('rfqStatus_'+r.status)||r.status}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">⚙️ ${r.partName||'-'}</div>
+        <div style="display:flex;font-size:11px;color:var(--text2);margin-top:2px">
+          <span>📅 ${formatDate(r.requestDate)}</span>
+          <span style="margin-left:6px">🎯 ${rfqProbLabel(r)}</span>
+          ${rev?`<span style="margin-left:auto;font-weight:600;color:var(--text)">฿${Math.round(rev).toLocaleString()}</span>`:''}
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+  }
+  var icons = {activity:'📝', deal:'💼'};
+  var msgs = {activity:'活動履歴', deal:'案件・商談'};
+  var tab = custState.relatedTab;
+  return `<div class="empty-state" style="padding:28px">
+    <div class="empty-icon">${icons[tab]||'📋'}</div>
+    <p style="margin-top:6px;font-size:13px">${msgs[tab]||tab}は今後実装予定</p>
+  </div>`;
+}
+
+// ─── RELATED RFQ DETAIL ──────────────────────────────────────
+function custShowRelatedRFQ(rfqId) {
+  var list = (typeof rfqState !== 'undefined' ? rfqState.list : []);
+  var rfq = list.find(function(r) { return r.id === rfqId; });
+  if (!rfq) return;
+  custState.rightMode = 'rfq_detail';
+  document.getElementById('custRightTitle').textContent = rfq.rfqNumber || 'RFQ';
+  document.getElementById('custRightActions').innerHTML = `
+    <button class="btn btn-sm btn-secondary" onclick="custRenderDetail(custState.selected)">
+      ← ${t('customers')||'顧客詳細'}に戻る
+    </button>
+  `;
+  var sc = rfqStatusColor(rfq.status);
+  document.getElementById('custRightBody').innerHTML = `
+    <div class="rfq-detail">
+      <div class="rfq-detail-status">
+        <span class="badge badge-${sc} badge-lg">${t('rfqStatus_'+rfq.status)||rfq.status}</span>
+        ${rfq.source==='imported'?'<span class="rfq-imported-badge-lg">📥 インポート済み</span>':''}
+      </div>
+      <div class="rfq-detail-grid">
+        ${rfqDetailRow('🏢', t('customerName'), rfq.customerName)}
+        ${rfqDetailRow('⚙️', t('partName'), rfq.partName)}
+        ${rfqDetailRow('🏷️', t('partNumber'), rfq.partNumber)}
+        ${rfqDetailRow('📅', t('requestDate'), formatDate(rfq.requestDate))}
+        ${rfq.productType?rfqDetailRow('🏭', t('productType')||'BU', rfq.productType):''}
+        ${rfq.factory?rfqDetailRow('🏗️', t('factory')||'FAC', rfq.factory):''}
+        ${rfqDetailRow('💴', t('unitPrice')||'単価', rfq.unitPrice?(rfq.unitPrice+' '+(rfq.unitPriceUnit||'THB')):'-')}
+        ${rfqDetailRow('📦', t('consumption')||'消費量/月', rfq.quantity?(rfq.quantity+' '+(rfq.unit||'pcs')):'-')}
+        ${(function(){ var rev=rfqCalcRevenue(rfq); return rev?rfqDetailRow('📈', t('revenueCalc')||'売上/月', formatCurrency(rev,rfq.currency)):''; })()}
+        ${rfqDetailRow('🎯', t('potentialPct')||'Potential%', rfqProbLabel(rfq))}
+        ${rfq.status==='Won'&&rfq.closedDate?rfqDetailRow('🏆', t('firstPoDate')||'初回受注日', formatDate(rfq.closedDate)):''}
+        ${rfqDetailRow('👤', t('assignedTo'), rfq.assignedTo)}
+      </div>
+      ${rfq.notes?`<div class="rfq-detail-notes">
+        <div class="rfq-detail-label">📋 ${t('notes')}</div>
+        <div class="rfq-detail-note-text">${rfq.notes}</div>
+      </div>`:''}
+      <div class="rfq-stage-progress">
+        ${['Open','Quoting','Submitted','Won'].map(function(s,i){
+          var stages=['Open','Quoting','Submitted','Won','Lost'];
+          var cur=stages.indexOf(rfq.status), done=i<=cur&&rfq.status!=='Lost';
+          return `<div class="rfq-stage-step ${done?'done':''} ${rfq.status===s?'current':''}">
+            <div class="rfq-stage-dot"></div>
+            <div class="rfq-stage-label">${t('rfqStatus_'+s)||s}</div>
+          </div>`;
+        }).join('<div class="rfq-stage-line"></div>')}
+      </div>
+    </div>
+  `;
+}
+
+// ─── ADD / EDIT FORM ─────────────────────────────────────────
+function custShowForm(id) {
+  var row = id ? (custState.list.find(function(r){ return r.id===id; })||{}) : {};
+  custState.rightMode = 'form';
+  document.getElementById('custRightTitle').textContent = id ? '顧客編集' : '顧客追加';
+  document.getElementById('custRightActions').innerHTML = `
+    <button class="btn btn-sm btn-secondary" onclick="custCancelForm()">✕ ${t('cancel')}</button>
+    <button class="btn btn-sm btn-primary" onclick="custSubmitForm()">💾 ${t('save')}</button>
+  `;
+  document.getElementById('custRightBody').innerHTML = `
+    <div class="rfq-form" id="custFormBody">
+      <input type="hidden" id="custFormId" value="${row.id||''}">
+
+      <div class="form-group">
+        <label class="form-label">${t('companyName')||'会社名'} <span class="required">*</span></label>
+        <input class="form-control" id="custF_companyName" value="${row.companyName||''}" placeholder="${t('companyName')||'会社名'}">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">${t('productType')||'BU'}</label>
+          <input class="form-control" id="custF_bu" value="${row.bu||''}" placeholder="TUBE, DIPPING...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">${t('factory')||'FAC'}</label>
+          <select class="form-control" id="custF_fac">
+            <option value="">-</option>
+            ${['LKB','GTW','LKB , GTW'].map(function(f){ return `<option value="${f}" ${(row.fac||'')===f?'selected':''}>${f}</option>`; }).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">${t('custType1')||'区分'}</label>
+          <select class="form-control" id="custF_type1">
+            <option value="">-</option>
+            ${['Domestic','Export'].map(function(x){ return `<option value="${x}" ${(row.type1||'')===x?'selected':''}>${x}</option>`; }).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">${t('manufacTrading')||'メーカー/商社'}</label>
+          <input class="form-control" id="custF_manufacTrading" value="${row.manufacTrading||''}">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">${t('area')||'エリア'}</label>
+          <input class="form-control" id="custF_area" value="${row.area||''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">${t('country')}</label>
+          <input class="form-control" id="custF_country" value="${row.country||''}">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">${t('contactPerson')||'担当者'}</label>
+          <input class="form-control" id="custF_contactPerson" value="${row.contactPerson||''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">${t('phone')}</label>
+          <input class="form-control" id="custF_telephone" value="${row.telephone||''}">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">${t('email')}</label>
+          <input class="form-control" id="custF_email" value="${row.email||''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">${t('web')||'Web'}</label>
+          <input class="form-control" id="custF_web" value="${row.web||''}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">${t('customerProduct')||'取扱製品'}</label>
+        <input class="form-control" id="custF_customerProduct" value="${row.customerProduct||''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">${t('customerApplication')||'用途'}</label>
+        <input class="form-control" id="custF_customerApplication" value="${row.customerApplication||''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">${t('location')||'所在地'}</label>
+        <input class="form-control" id="custF_location" value="${row.location||''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">${t('notes')}</label>
+        <textarea class="form-control" id="custF_remark" rows="3">${row.remark||''}</textarea>
+      </div>
+    </div>
+  `;
+}
+
+function custCancelForm() {
+  if (custState.selected) {
+    custRenderDetail(custState.selected);
+  } else {
+    document.getElementById('custRightTitle').textContent = t('customers');
+    document.getElementById('custRightActions').innerHTML = '';
+    document.getElementById('custRightBody').innerHTML = `
+      <div style="text-align:center;padding:60px 24px;color:#5f6368">
+        <div style="font-size:48px;margin-bottom:16px">🏢</div>
+        <p style="font-size:15px;font-weight:600">${t('customers')}</p>
+        <p style="font-size:13px;margin-top:8px">顧客を選択して詳細を表示</p>
+      </div>`;
+  }
+}
+
+function custSubmitForm() {
+  var id = document.getElementById('custFormId').value;
+  function fv(fid) { var el=document.getElementById('custF_'+fid); return el?el.value.trim():''; }
+  var companyName = fv('companyName');
+  if (!companyName) { showToast(t('customerRequired')||'会社名は必須です', 'error'); return; }
+  var data = {
+    id: id||null, companyName: companyName,
+    bu: fv('bu'), fac: fv('fac'), type1: fv('type1'),
+    manufacTrading: fv('manufacTrading'), area: fv('area'),
+    country: fv('country'), contactPerson: fv('contactPerson'),
+    telephone: fv('telephone'), email: fv('email'),
+    web: fv('web'), customerProduct: fv('customerProduct'),
+    customerApplication: fv('customerApplication'),
+    location: fv('location'), remark: fv('remark'),
+    status: 'active'
+  };
+  var saveBtn = document.querySelector('[onclick="custSubmitForm()"]');
+  if (saveBtn) { saveBtn.disabled=true; saveBtn.textContent='⏳ '+t('saving'); }
+  google.script.run
+    .withSuccessHandler(function() {
+      showToast(t('saveSuccess'), 'success');
+      custLoadList();
+      setTimeout(function() {
+        var updated = custState.list.find(function(r){ return r.companyName===data.companyName; });
+        if (updated) custSelectRow(updated.id);
+      }, 800);
+    })
+    .withFailureHandler(function(e) {
+      showToast(e.message, 'error');
+      if (saveBtn) { saveBtn.disabled=false; saveBtn.textContent='💾 '+t('save'); }
+    })
+    .saveCustomer(data);
+}
+
+// ─── DELETE ──────────────────────────────────────────────────
+function custConfirmDelete(id) {
+  showConfirm(t('confirmDelete'), function() {
+    closeConfirm();
+    google.script.run
+      .withSuccessHandler(function() {
+        showToast(t('deleteSuccess'), 'success');
+        custState.selected = null;
+        custCancelForm();
+        custLoadList();
+      })
+      .withFailureHandler(function(e){ showToast(e.message,'error'); })
+      .deleteCustomer(id);
+  });
+}
+
+// ─── RESIZE ──────────────────────────────────────────────────
+function initCustResize() {
+  var divider = document.getElementById('custDivider');
+  var left = document.getElementById('custLeft');
+  if (!divider || !left) return;
+  var dragging=false, startX, startW;
+  divider.addEventListener('mousedown', function(e) {
+    dragging=true; startX=e.clientX; startW=left.offsetWidth;
+    document.body.style.cursor='col-resize'; document.body.style.userSelect='none';
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (!dragging) return;
+    var total = left.parentElement ? left.parentElement.offsetWidth : 1000;
+    var newW = Math.max(280, Math.min(startW+(e.clientX-startX), total-320));
+    left.style.width=newW+'px'; left.style.flex='none';
+  });
+  document.addEventListener('mouseup', function() {
+    if (dragging) { dragging=false; document.body.style.cursor=''; document.body.style.userSelect=''; }
+  });
+}
+</script>

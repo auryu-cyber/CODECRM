@@ -225,6 +225,26 @@ html,body{height:100%;font-family:'Noto Sans JP','Noto Sans Thai',Arial,sans-ser
 /* RFQ Filter Bar */
 .rfq-filter-bar{display:flex;gap:6px;padding:6px 12px 4px;flex-wrap:wrap;border-bottom:1px solid var(--border)}
 .rfq-filter-bar select{font-size:12px;padding:3px 8px;border:1px solid #dadce0;border-radius:6px;background:#fff;cursor:pointer;color:var(--text)}
+/* ============================================================
+   CUSTOMER MODULE
+   ============================================================ */
+/* Customer type badges */
+.cust-type-badge{font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px;white-space:nowrap}
+.cust-type-domestic{background:#e8f0fe;color:#1a73e8}
+.cust-type-export{background:#e6f4ea;color:#137333}
+/* Related section */
+.cust-related{border-top:2px solid var(--border)}
+.cust-related-tabs{display:flex;border-bottom:1px solid var(--border);background:var(--bg)}
+.cust-rtab{padding:8px 14px;border:none;background:none;cursor:pointer;font-size:12px;
+  font-weight:500;color:var(--text2);border-bottom:2px solid transparent;
+  font-family:inherit;transition:color var(--trans),border-color var(--trans)}
+.cust-rtab:hover{color:var(--primary)}
+.cust-rtab.active{color:var(--primary);border-bottom-color:var(--primary)}
+.cust-related-list{overflow-y:auto}
+.cust-related-item{padding:9px 14px;border-bottom:1px solid var(--border);cursor:pointer;
+  transition:background var(--trans)}
+.cust-related-item:hover{background:var(--primary-light)}
+
 /* Potential% Legend */
 .rfq-prob-legend{border-bottom:1px solid var(--border);background:var(--bg);flex-shrink:0}
 .rfq-prob-legend-hdr{display:flex;align-items:center;justify-content:space-between;
