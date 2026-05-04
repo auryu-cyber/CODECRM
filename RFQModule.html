@@ -24,7 +24,23 @@ var rfqState = {
 function renderRFQPage() {
   setHeaderTitle(t('rfqTitle'));
   document.getElementById('pageContent').innerHTML = `
-    <div id="rfqSplitPanel" class="rfq-split">
+    <div id="rfqMainLayout" class="rfq-main-layout">
+      <!-- KPI BAR -->
+      <div class="rfq-kpi-bar">
+        <div class="rfq-kpi-card">
+          <div class="rfq-kpi-label">📊 全体 売上/月 合計（絞り込み適用）</div>
+          <div class="rfq-kpi-value" id="rfqKpiAllVal">฿0</div>
+          <div class="rfq-kpi-sub" id="rfqKpiAllCount">0件</div>
+        </div>
+        <div class="rfq-kpi-card rfq-kpi-won">
+          <div class="rfq-kpi-label">🏆 受注済み 売上/月 合計</div>
+          <div class="rfq-kpi-value" id="rfqKpiWonVal">฿0</div>
+          <div class="rfq-kpi-sub" id="rfqKpiWonCount">受注 0件</div>
+        </div>
+      </div>
+
+      <!-- SPLIT PANEL -->
+      <div id="rfqSplitPanel" class="rfq-split">
       <!-- LEFT PANEL -->
       <div class="rfq-left" id="rfqLeft">
         <div class="rfq-toolbar">
@@ -107,6 +123,7 @@ function renderRFQPage() {
         </div>
       </div>
     </div>
+    </div>
   `;
 
   initRFQResize();
@@ -165,6 +182,7 @@ function rfqApplyFilter() {
   rfqRenderList(rows);
   rfqUpdateStatusCounts();
   rfqRefreshYearOptions();
+  rfqUpdateKpi(rows);
 }
 
 function rfqUpdateStatusCounts() {
@@ -273,14 +291,11 @@ function rfqRenderDetail(r) {
       <!-- Grid of fields -->
       <div class="rfq-detail-grid">
         ${rfqDetailRow('🏢', t('customerName'), r.customerName)}
-        ${rfqDetailRow('🔢', t('rfqNumber'), r.rfqNumber)}
         ${rfqDetailRow('⚙️', t('partName'), r.partName)}
         ${rfqDetailRow('🏷️', t('partNumber'), r.partNumber)}
-        ${rfqDetailRow('📦', t('quantity'), (r.quantity||'-') + ' ' + (r.unit||''))}
         ${rfqDetailRow('📅', t('requestDate'), formatDate(r.requestDate))}
         ${rfqDetailRow('⏰', t('dueDate'), formatDate(r.dueDate))}
         ${rfqDetailRow('📝', t('quotedDate'), formatDate(r.quotedDate))}
-        ${rfqDetailRow('💰', t('quotedAmount'), r.quotedAmount ? formatCurrency(r.quotedAmount, r.currency) : '-')}
         ${rfqDetailRow('👤', t('assignedTo'), r.assignedTo)}
         ${r.productType ? rfqDetailRow('🏭', t('productType')||'BU', r.productType) : ''}
         ${r.factory ? rfqDetailRow('🏗️', t('factory')||'FAC', r.factory) : ''}
@@ -797,6 +812,20 @@ function rfqCalcRevenue(r) {
   var qty = parseFloat(String(r.quantity||'').replace(/,/g,'')) || 0;
   if (up && qty) return up * qty;
   return parseFloat(String(r.revenuePerMonth||'').replace(/,/g,'')) || 0;
+}
+
+function rfqUpdateKpi(rows) {
+  var totalAll = 0, totalWon = 0, countWon = 0;
+  rows.forEach(function(r) {
+    var rev = rfqCalcRevenue(r);
+    totalAll += rev;
+    if (r.status === 'Won') { totalWon += rev; countWon++; }
+  });
+  var el = function(id) { return document.getElementById(id); };
+  if (el('rfqKpiAllVal'))   el('rfqKpiAllVal').textContent   = formatCurrency(totalAll, 'THB');
+  if (el('rfqKpiAllCount')) el('rfqKpiAllCount').textContent = rows.length + '件';
+  if (el('rfqKpiWonVal'))   el('rfqKpiWonVal').textContent   = formatCurrency(totalWon, 'THB');
+  if (el('rfqKpiWonCount')) el('rfqKpiWonCount').textContent = '受注 ' + countWon + '件';
 }
 
 function rfqRefreshYearOptions() {
