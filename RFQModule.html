@@ -91,6 +91,22 @@ function renderRFQPage() {
           </select>
         </div>
 
+        <!-- Potential% Legend -->
+        <div class="rfq-prob-legend" id="rfqProbLegend">
+          <div class="rfq-prob-legend-hdr" onclick="rfqToggleProbLegend()">
+            🎯 Potential% 凡例
+            <span class="rfq-prob-legend-arrow" id="rfqProbLegendArrow">▶</span>
+          </div>
+          <div class="rfq-prob-legend-body" id="rfqProbLegendBody" style="display:none">
+            <div class="rfq-prob-item"><span class="rfq-prob-badge rfq-pb-10">10%</span>Waiting detail</div>
+            <div class="rfq-prob-item"><span class="rfq-prob-badge rfq-pb-30">30%</span>Under development by Engineer</div>
+            <div class="rfq-prob-item"><span class="rfq-prob-badge rfq-pb-50">50%</span>Price discussion</div>
+            <div class="rfq-prob-item"><span class="rfq-prob-badge rfq-pb-60">60%</span>Price OK, waiting end-user approve</div>
+            <div class="rfq-prob-item"><span class="rfq-prob-badge rfq-pb-80">80%</span>Waiting PO</div>
+            <div class="rfq-prob-item"><span class="rfq-prob-badge rfq-pb-100">100%</span>Get PO</div>
+          </div>
+        </div>
+
         <!-- List -->
         <div class="rfq-list-body" id="rfqListBody">
           <div style="text-align:center;padding:40px">
@@ -570,7 +586,7 @@ function rfqShowForm(id) {
         <div class="form-group">
           <label class="form-label">${t('requestDate')}</label>
           <input class="form-control" type="date" id="rfqF_requestDate"
-            value="${row.requestDate||''}">
+            value="${row.requestDate || (id ? '' : new Date().toISOString().split('T')[0])}">
         </div>
         <div class="form-group">
           <label class="form-label">${t('dueDate')}</label>
@@ -786,6 +802,16 @@ function rfqOpenAutoSyncModal() {
       .withFailureHandler(function(e) { showToast('❌ ' + e.message, 'error'); })
       .setupRFQAutoSyncTrigger();
   }
+}
+
+// ---- POTENTIAL% LEGEND TOGGLE ----
+function rfqToggleProbLegend() {
+  var body = document.getElementById('rfqProbLegendBody');
+  var arrow = document.getElementById('rfqProbLegendArrow');
+  if (!body) return;
+  var open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  if (arrow) arrow.textContent = open ? '▶' : '▼';
 }
 
 // ---- FILTER HELPERS ----

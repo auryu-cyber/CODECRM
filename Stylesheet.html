@@ -225,6 +225,25 @@ html,body{height:100%;font-family:'Noto Sans JP','Noto Sans Thai',Arial,sans-ser
 /* RFQ Filter Bar */
 .rfq-filter-bar{display:flex;gap:6px;padding:6px 12px 4px;flex-wrap:wrap;border-bottom:1px solid var(--border)}
 .rfq-filter-bar select{font-size:12px;padding:3px 8px;border:1px solid #dadce0;border-radius:6px;background:#fff;cursor:pointer;color:var(--text)}
+/* Potential% Legend */
+.rfq-prob-legend{border-bottom:1px solid var(--border);background:var(--bg);flex-shrink:0}
+.rfq-prob-legend-hdr{display:flex;align-items:center;justify-content:space-between;
+  padding:5px 12px;font-size:11px;font-weight:600;color:var(--text2);cursor:pointer;
+  user-select:none}
+.rfq-prob-legend-hdr:hover{background:var(--primary-light);color:var(--primary)}
+.rfq-prob-legend-arrow{font-size:9px}
+.rfq-prob-legend-body{padding:4px 12px 6px}
+.rfq-prob-item{display:flex;align-items:center;gap:6px;padding:2px 0;
+  font-size:11px;color:var(--text2)}
+.rfq-prob-badge{font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;
+  white-space:nowrap;min-width:32px;text-align:center;flex-shrink:0}
+.rfq-pb-10{background:#f1f3f4;color:#5f6368}
+.rfq-pb-30{background:#e3f2fd;color:#0d47a1}
+.rfq-pb-50{background:#fff8e1;color:#e65100}
+.rfq-pb-60{background:#fce4ec;color:#b71c1c}
+.rfq-pb-80{background:#f3e5f5;color:#6a1b9a}
+.rfq-pb-100{background:#e8f5e9;color:#1b5e20}
+
 /* RFQ BU / FAC badges */
 .rfq-bu-tag,.rfq-fac-tag{font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px;white-space:nowrap}
 .rfq-bu-tag{background:#e8f0fe;color:#1a73e8}
