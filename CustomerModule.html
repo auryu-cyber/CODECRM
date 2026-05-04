@@ -85,6 +85,15 @@ function renderCustomerPage() {
           </div>
         </div>
       </div>
+
+      <!-- THIRD PANEL — RFQ detail -->
+      <div class="cust-third" id="custThirdPanel" style="display:none">
+        <div class="cust-third-hdr">
+          <span>📋 RFQ 詳細</span>
+          <button onclick="custCloseThirdPanel()">✕ 閉じる</button>
+        </div>
+        <div id="custThirdContent"></div>
+      </div>
     </div>
   `;
   initCustResize();
@@ -206,6 +215,7 @@ function custSelectRow(id) {
     var oc = el.getAttribute('onclick') || '';
     el.classList.toggle('selected', oc.indexOf("'"+id+"'") !== -1);
   });
+  custCloseThirdPanel();
   custRenderDetail(row);
 }
 
@@ -300,11 +310,12 @@ function custSetRelatedTab(tab) {
 }
 
 function custGetRelatedRFQs(companyName) {
-  if (!companyName) return [];
-  var q = companyName.toLowerCase();
+  if (!companyName || !companyName.trim()) return [];
+  var q = companyName.toLowerCase().trim();
   var list = (typeof rfqState !== 'undefined' && rfqState.list) ? rfqState.list : [];
   return list.filter(function(r) {
-    var cn = (r.customerName||'').toLowerCase();
+    var cn = (r.customerName||'').toLowerCase().trim();
+    if (!cn) return false;
     return cn.indexOf(q) !== -1 || q.indexOf(cn) !== -1;
   });
 }
@@ -343,20 +354,13 @@ function custRelatedContent() {
   </div>`;
 }
 
-// ─── RELATED RFQ DETAIL ──────────────────────────────────────
+// ─── RELATED RFQ DETAIL (3rd panel) ─────────────────────────
 function custShowRelatedRFQ(rfqId) {
   var list = (typeof rfqState !== 'undefined' ? rfqState.list : []);
   var rfq = list.find(function(r) { return r.id === rfqId; });
   if (!rfq) return;
-  custState.rightMode = 'rfq_detail';
-  document.getElementById('custRightTitle').textContent = rfq.rfqNumber || 'RFQ';
-  document.getElementById('custRightActions').innerHTML = `
-    <button class="btn btn-sm btn-secondary" onclick="custRenderDetail(custState.selected)">
-      ← ${t('customers')||'顧客詳細'}に戻る
-    </button>
-  `;
   var sc = rfqStatusColor(rfq.status);
-  document.getElementById('custRightBody').innerHTML = `
+  document.getElementById('custThirdContent').innerHTML = `
     <div class="rfq-detail">
       <div class="rfq-detail-status">
         <span class="badge badge-${sc} badge-lg">${t('rfqStatus_'+rfq.status)||rfq.status}</span>
@@ -392,6 +396,11 @@ function custShowRelatedRFQ(rfqId) {
       </div>
     </div>
   `;
+  document.getElementById('custThirdPanel').style.display = 'flex';
+}
+
+function custCloseThirdPanel() {
+  document.getElementById('custThirdPanel').style.display = 'none';
 }
 
 // ─── ADD / EDIT FORM ─────────────────────────────────────────

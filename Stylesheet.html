@@ -245,6 +245,17 @@ html,body{height:100%;font-family:'Noto Sans JP','Noto Sans Thai',Arial,sans-ser
   transition:background var(--trans)}
 .cust-related-item:hover{background:var(--primary-light)}
 
+/* Customer 3rd panel */
+.cust-third{flex:0 0 380px;border-left:2px solid var(--primary);flex-direction:column;
+  overflow:hidden;background:#fff;flex-shrink:0}
+.cust-third-hdr{display:flex;justify-content:space-between;align-items:center;
+  padding:8px 12px;background:var(--primary-light);font-weight:600;font-size:13px;
+  border-bottom:1px solid var(--border);flex-shrink:0}
+.cust-third-hdr button{font-size:12px;padding:4px 10px;border:1px solid var(--primary);
+  border-radius:6px;background:#fff;color:var(--primary);cursor:pointer;font-family:inherit}
+.cust-third-hdr button:hover{background:var(--primary);color:#fff}
+#custThirdContent{flex:1;overflow-y:auto;padding:0}
+
 /* Potential% Legend */
 .rfq-prob-legend{border-bottom:1px solid var(--border);background:var(--bg);flex-shrink:0}
 .rfq-prob-legend-hdr{display:flex;align-items:center;justify-content:space-between;
